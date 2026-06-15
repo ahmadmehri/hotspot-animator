@@ -11,7 +11,9 @@ Hotspot Animator is a simple desktop-style web app for virtual tour creators who
 3DVista hotspot graphics need to remain practical for tour projects: transparent background, easy import, and good browser compatibility. Hotspot Animator focuses on APNG because it keeps PNG-style transparency while supporting frame animation.
 
 The app exports `.apng` files using PNG/APNG encoding, so the result is still an animated PNG file.
+
 ![Hotspot Animator sample animation](public/sample.gif)
+
 ## Features
 
 - Import transparent PNG hotspot icons.
