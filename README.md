@@ -29,6 +29,67 @@ The app exports `.apng` files using PNG/APNG encoding, so the result is still an
 - Short tooltips across the interface.
 - Rock Bench YouTube, VT playlist, GitHub, and donation links in the Tools panel.
 
+Important: do not open `index.html` directly by double-clicking it. This project needs a local Vite server because the browser must load React, TypeScript modules, and bundled assets correctly.
+
+### Requirements
+
+- Node.js
+- npm
+
+### Simplest Way to Run
+
+```bash
+npm install
+npm run dev
+```
+
+After running the command, Vite will print a local URL, usually:
+
+```text
+http://localhost:5173/
+```
+
+Open that URL in your browser.
+
+### Development Server
+
+Use this when editing or testing the app:
+
+```bash
+npm run dev
+```
+
+### Production Build
+
+Use this when you want to check the final optimized version:
+
+```bash
+npm run build
+npm run preview
+```
+
+Vite will print a preview URL, usually:
+
+```text
+http://localhost:4173/
+```
+
+### Why `index.html` Does Not Open Directly
+
+Hotspot Animator is not a plain HTML file. It is a Vite React app. The root `index.html` loads the app through module paths such as `/src/main.tsx`, which must be served by Vite during development or by a production web server after building.
+
+If you double-click `index.html`, the browser opens it with a `file://` path, and those module paths will not resolve correctly.
+
+For local use, the simplest solution is always:
+
+```bash
+npm install
+npm run dev
+```
+
+
+
+
 ## Animation Styles
 
 Hotspot Animator includes a wide collection of safe hotspot animation styles:
