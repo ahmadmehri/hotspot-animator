@@ -16,6 +16,90 @@ Hotspot Animator is a simple desktop-style web app for virtual tour creators who
 
 The app exports `.apng` files using PNG/APNG encoding, so the result is still an animated PNG file.
 
+
+## Beginner Step-by-Step Guide
+
+This section is for users who are not familiar with coding tools.
+
+### Step 1: Install Node.js
+
+Hotspot Animator needs Node.js to run on your computer.
+
+1. Go to [https://nodejs.org](https://nodejs.org).
+2. Download the **LTS** version.
+3. Install it with the default settings.
+4. After installation, restart your Command Prompt or PowerShell window.
+
+### Step 2: Download the Project
+
+If you are using GitHub:
+
+1. Open the Hotspot Animator repository.
+2. Click the green **Code** button.
+3. Click **Download ZIP**.
+4. Extract the ZIP file to a normal folder, for example:
+
+```text
+D:\Projects\Hotspot Animator
+```
+
+The folder can be anywhere on your computer. It does not have to be on the `C:` drive.
+
+### Step 3: Open the Correct Folder
+
+This is very important. You must run the commands inside the folder that contains `package.json`.
+
+On Windows:
+
+1. Open the Hotspot Animator folder.
+2. Click the address bar at the top of File Explorer.
+3. Type `cmd`.
+4. Press **Enter**.
+
+Command Prompt will open directly inside the project folder.
+
+You should see a path similar to:
+
+```text
+D:\Projects\Hotspot Animator>
+```
+
+If you see only this:
+
+```text
+C:\Users\YourName>
+```
+
+you are in the wrong folder.
+
+The exact drive letter and folder path may be different on your computer. That is okay. The important part is that the Command Prompt is opened inside the Hotspot Animator project folder.
+
+### Step 4: Install the App Files
+
+Run this command:
+
+```bash
+npm install
+```
+
+This downloads the required app dependencies. It may take a little while.
+
+### Step 5: Start Hotspot Animator
+
+Run this command:
+
+```bash
+npm run dev
+```
+
+After a moment, you should see a local address like:
+
+```text
+http://localhost:5173/
+```
+
+Copy that address and open it in your browser.
+
 ## Features
 
 - Import transparent PNG hotspot icons.
@@ -161,89 +245,6 @@ Animated hotspots should stay lightweight, especially for mobile and VR tours.
 - Shorter duration reduces frame count.
 - Smaller export scale reduces dimensions.
 - Large glow, ring expansion, and movement may require more padding and can increase file size.
-
-## Beginner Step-by-Step Guide
-
-This section is for users who are not familiar with coding tools.
-
-### Step 1: Install Node.js
-
-Hotspot Animator needs Node.js to run on your computer.
-
-1. Go to [https://nodejs.org](https://nodejs.org).
-2. Download the **LTS** version.
-3. Install it with the default settings.
-4. After installation, restart your Command Prompt or PowerShell window.
-
-### Step 2: Download the Project
-
-If you are using GitHub:
-
-1. Open the Hotspot Animator repository.
-2. Click the green **Code** button.
-3. Click **Download ZIP**.
-4. Extract the ZIP file to a normal folder, for example:
-
-```text
-D:\Projects\Hotspot Animator
-```
-
-The folder can be anywhere on your computer. It does not have to be on the `C:` drive.
-
-### Step 3: Open the Correct Folder
-
-This is very important. You must run the commands inside the folder that contains `package.json`.
-
-On Windows:
-
-1. Open the Hotspot Animator folder.
-2. Click the address bar at the top of File Explorer.
-3. Type `cmd`.
-4. Press **Enter**.
-
-Command Prompt will open directly inside the project folder.
-
-You should see a path similar to:
-
-```text
-D:\Projects\Hotspot Animator>
-```
-
-If you see only this:
-
-```text
-C:\Users\YourName>
-```
-
-you are in the wrong folder.
-
-The exact drive letter and folder path may be different on your computer. That is okay. The important part is that the Command Prompt is opened inside the Hotspot Animator project folder.
-
-### Step 4: Install the App Files
-
-Run this command:
-
-```bash
-npm install
-```
-
-This downloads the required app dependencies. It may take a little while.
-
-### Step 5: Start Hotspot Animator
-
-Run this command:
-
-```bash
-npm run dev
-```
-
-After a moment, you should see a local address like:
-
-```text
-http://localhost:5173/
-```
-
-Copy that address and open it in your browser.
 
 ### Step 6: Use the Software
 
