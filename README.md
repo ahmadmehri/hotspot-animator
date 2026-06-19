@@ -8,7 +8,8 @@ Hotspot Animator is a simple desktop-style web app for virtual tour creators who
 
 ## Sample Animation
 
-![Hotspot Animator sample animation](public/sample.gif)
+![Hotspot Animator sample animation](public/sample2.gif)
+
 
 ## Why APNG?
 
@@ -16,6 +17,7 @@ Hotspot Animator is a simple desktop-style web app for virtual tour creators who
 
 The app exports `.apng` files using PNG/APNG encoding, so the result is still an animated PNG file.
 
+![Hotspot Animator sample animation](public/sample.gif)
 
 ## Beginner Step-by-Step Guide
 
