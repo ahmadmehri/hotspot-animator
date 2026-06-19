@@ -6,6 +6,7 @@ export interface SourceImage {
   width: number;
   height: number;
   name: string;
+  previewUrl: string;
 }
 
 export interface ExportProgress {

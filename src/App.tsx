@@ -2036,7 +2036,7 @@ export function App() {
                         title="Edit this layer"
                       >
                         <span className="layer-thumb">
-                          <img src={layer.source.element.src} alt="" />
+                          <img src={layer.source.previewUrl} alt="" />
                         </span>
                         <span className="layer-name">{layer.name}</span>
                       </button>
@@ -2436,12 +2436,23 @@ function loadSourceImage(file: File) {
     const url = URL.createObjectURL(file);
     const image = new Image();
     image.onload = () => {
+      const previewSize = 96;
+      const scale = Math.min(previewSize / image.naturalWidth, previewSize / image.naturalHeight, 1);
+      const width = Math.max(1, Math.round(image.naturalWidth * scale));
+      const height = Math.max(1, Math.round(image.naturalHeight * scale));
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const context = canvas.getContext("2d");
+      if (context) context.drawImage(image, 0, 0, width, height);
+      const previewUrl = context ? canvas.toDataURL("image/png") : url;
       URL.revokeObjectURL(url);
       resolve({
         element: image,
         width: image.naturalWidth,
         height: image.naturalHeight,
-        name: file.name.replace(/\.[^.]+$/, "")
+        name: file.name.replace(/\.[^.]+$/, ""),
+        previewUrl
       });
     };
     image.onerror = () => {
