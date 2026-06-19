@@ -1,4 +1,5 @@
 export type AnimationStyle =
+  | "none"
   | "pulse"
   | "breathe"
   | "pop"
@@ -41,7 +42,34 @@ export type AnimationStyle =
   | "compassNudge"
   | "vrGentlePulse"
   | "clickRipple"
-  | "ringDrawReverse";
+  | "ringDrawReverse"
+  | "velvetBreath"
+  | "silkDrift"
+  | "quietHalo"
+  | "pearlShimmer"
+  | "calmOrbit"
+  | "slowBloom"
+  | "softDisappear"
+  | "softDissolve"
+  | "shapeRightToLeft"
+  | "shapeLeftToRight"
+  | "shapeTopDown"
+  | "shapeBottomUp"
+  | "revealLeftToRight"
+  | "revealRightToLeft"
+  | "revealTopDown"
+  | "revealBottomUp"
+  | "irisDisappear"
+  | "irisReveal";
+
+export type MaskDirection =
+  | "none"
+  | "leftToRight"
+  | "rightToLeft"
+  | "topToBottom"
+  | "bottomToTop"
+  | "centerOut"
+  | "centerIn";
 
 export type Easing =
   | "linear"
@@ -98,6 +126,10 @@ export interface FrameState {
   ringScale: number;
   ringOpacity: number;
   ringDraw: number;
+  sweepOpacity: number;
+  maskDirection: MaskDirection;
+  maskProgress: number;
+  dissolve: number;
   secondRingScale: number;
   secondRingOpacity: number;
   secondRingDraw: number;
@@ -132,6 +164,7 @@ export const defaultSettings: AnimationSettings = {
 };
 
 export const animationLabels: Record<AnimationStyle, string> = {
+  none: "None (Fixed)",
   pulse: "Pulse",
   breathe: "Breathe",
   pop: "Pop",
@@ -174,7 +207,25 @@ export const animationLabels: Record<AnimationStyle, string> = {
   compassNudge: "Compass Nudge",
   vrGentlePulse: "VR Gentle Pulse",
   clickRipple: "Click Me Ripple",
-  ringDrawReverse: "Ring Draw Reverse"
+  ringDrawReverse: "Ring Draw Reverse",
+  velvetBreath: "Velvet Breath",
+  silkDrift: "Silk Drift",
+  quietHalo: "Quiet Halo",
+  pearlShimmer: "Pearl Shimmer",
+  calmOrbit: "Calm Orbit",
+  slowBloom: "Slow Bloom",
+  softDisappear: "Soft Disappear",
+  softDissolve: "Soft Dissolve",
+  shapeRightToLeft: "Shape Right to Left",
+  shapeLeftToRight: "Shape Left to Right",
+  shapeTopDown: "Shape Top Down",
+  shapeBottomUp: "Shape Bottom Up",
+  revealLeftToRight: "Reveal Left to Right",
+  revealRightToLeft: "Reveal Right to Left",
+  revealTopDown: "Reveal Top Down",
+  revealBottomUp: "Reveal Bottom Up",
+  irisDisappear: "Iris Disappear",
+  irisReveal: "Iris Reveal"
 };
 
 export function ease(value: number, easing: Easing) {
@@ -191,9 +242,34 @@ export function ease(value: number, easing: Easing) {
 }
 
 export function frameState(progress: number, settings: AnimationSettings): FrameState {
+  if (settings.style === "none") {
+    // Fixed layer: drawn once, at rest, with no motion, ring, glow or fade.
+    return {
+      iconScale: 1,
+      scaleX: 1,
+      scaleY: 1,
+      opacity: 1,
+      rotation: 0,
+      offsetX: 0,
+      offsetY: 0,
+      glow: 0,
+      sweep: 0,
+      ringScale: 1,
+      ringOpacity: 0,
+      ringDraw: 1,
+      sweepOpacity: 0,
+      maskDirection: "none",
+      maskProgress: 1,
+      dissolve: 0,
+      secondRingScale: 1,
+      secondRingOpacity: 0,
+      secondRingDraw: 1
+    };
+  }
   const p = clamp01(progress);
   const wave = ease(p, settings.easing);
   const sin = Math.sin(p * Math.PI * 2);
+  const softWave = (1 - Math.cos(p * Math.PI * 2)) / 2;
   const bounceCurve = Math.abs(Math.sin(p * Math.PI));
   const quickPulse = Math.abs(Math.sin(p * Math.PI * 4));
   const scaleDelta = Math.max(0, settings.scaleAmount - 1);
@@ -210,6 +286,10 @@ export function frameState(progress: number, settings: AnimationSettings): Frame
     ringScale: ringScaleAt(wave, settings),
     ringOpacity: (1 - wave) * settings.ringOpacity,
     ringDraw: 1,
+    sweepOpacity: 0.55,
+    maskDirection: "none",
+    maskProgress: 1,
+    dissolve: 0,
     secondRingScale: ringScaleAt(0, settings),
     secondRingOpacity: 0,
     secondRingDraw: 1
@@ -385,46 +465,51 @@ export function frameState(progress: number, settings: AnimationSettings): Frame
   if (settings.style === "slide") {
     const slide = Math.sin(p * Math.PI * 2);
     base.offsetX = slide * settings.shake;
-    base.opacity = settings.minOpacity + (1 - settings.minOpacity) * (1 - Math.abs(slide) * 0.35);
-    base.iconScale = 1 + (1 - Math.abs(slide)) * scaleDelta * 0.35;
-    base.glow = 1 - Math.abs(slide);
-    base.ringOpacity *= 0.25;
+    base.opacity = 1;
+    base.iconScale = 1;
+    base.glow = 0;
+    base.ringOpacity = 0;
+    base.secondRingOpacity = 0;
   }
 
   if (settings.style === "slideRight") {
     const enter = ease(p, settings.easing);
     base.offsetX = (enter - 1) * settings.shake;
-    base.opacity = settings.minOpacity + enter * (1 - settings.minOpacity);
-    base.iconScale = 0.92 + enter * (settings.scaleAmount - 0.92);
-    base.glow = enter;
-    base.ringOpacity *= enter;
+    base.opacity = 1;
+    base.iconScale = 1;
+    base.glow = 0;
+    base.ringOpacity = 0;
+    base.secondRingOpacity = 0;
   }
 
   if (settings.style === "slideLeft") {
     const enter = ease(p, settings.easing);
     base.offsetX = (1 - enter) * settings.shake;
-    base.opacity = settings.minOpacity + enter * (1 - settings.minOpacity);
-    base.iconScale = 0.92 + enter * (settings.scaleAmount - 0.92);
-    base.glow = enter;
-    base.ringOpacity *= enter;
+    base.opacity = 1;
+    base.iconScale = 1;
+    base.glow = 0;
+    base.ringOpacity = 0;
+    base.secondRingOpacity = 0;
   }
 
   if (settings.style === "slideDown") {
     const enter = ease(p, settings.easing);
     base.offsetY = (enter - 1) * settings.bounce;
-    base.opacity = settings.minOpacity + enter * (1 - settings.minOpacity);
-    base.iconScale = 0.92 + enter * (settings.scaleAmount - 0.92);
-    base.glow = enter;
-    base.ringOpacity *= enter;
+    base.opacity = 1;
+    base.iconScale = 1;
+    base.glow = 0;
+    base.ringOpacity = 0;
+    base.secondRingOpacity = 0;
   }
 
   if (settings.style === "slideUp") {
     const enter = ease(p, settings.easing);
     base.offsetY = (1 - enter) * settings.bounce;
-    base.opacity = settings.minOpacity + enter * (1 - settings.minOpacity);
-    base.iconScale = 0.92 + enter * (settings.scaleAmount - 0.92);
-    base.glow = enter;
-    base.ringOpacity *= enter;
+    base.opacity = 1;
+    base.iconScale = 1;
+    base.glow = 0;
+    base.ringOpacity = 0;
+    base.secondRingOpacity = 0;
   }
 
   if (settings.style === "rubberBand") {
@@ -552,6 +637,165 @@ export function frameState(progress: number, settings: AnimationSettings): Frame
     base.glow = 1 - draw * 0.4;
   }
 
+  if (settings.style === "velvetBreath") {
+    base.iconScale = 1 + softWave * Math.min(scaleDelta, 0.1);
+    base.opacity = 0.94 + softWave * 0.06;
+    base.glow = softWave * 0.28;
+    base.ringOpacity *= 0.12 + softWave * 0.18;
+  }
+
+  if (settings.style === "silkDrift") {
+    const drift = Math.sin(p * Math.PI * 2);
+    const lift = Math.sin(p * Math.PI * 2 + Math.PI / 4);
+    base.offsetX = drift * settings.shake * 0.35;
+    base.offsetY = -lift * settings.bounce * 0.26;
+    base.iconScale = 1 + softWave * Math.min(scaleDelta, 0.05);
+    base.glow = 0.1 + softWave * 0.18;
+    base.ringOpacity *= 0.12;
+  }
+
+  if (settings.style === "quietHalo") {
+    base.iconScale = 1 + softWave * Math.min(scaleDelta, 0.06);
+    base.glow = softWave * 0.24;
+    base.ringScale = ringScaleAt(softWave * 0.34, settings);
+    base.ringOpacity = (0.18 + softWave * 0.34) * settings.ringOpacity;
+  }
+
+  if (settings.style === "pearlShimmer") {
+    const shimmer = Math.sin(p * Math.PI);
+    base.sweep = p;
+    base.sweepOpacity = 0.22;
+    base.iconScale = 1 + shimmer * Math.min(scaleDelta, 0.04);
+    base.glow = 0.1 + shimmer * 0.2;
+    base.ringOpacity *= 0.08;
+  }
+
+  if (settings.style === "calmOrbit") {
+    const angle = p * Math.PI * 2;
+    base.offsetX = Math.cos(angle) * settings.shake * 0.22;
+    base.offsetY = Math.sin(angle) * settings.bounce * 0.18;
+    base.rotation = Math.sin(angle) * settings.rotation * 0.12;
+    base.iconScale = 1 + softWave * Math.min(scaleDelta, 0.04);
+    base.glow = 0.12 + softWave * 0.18;
+    base.ringOpacity *= 0.14;
+  }
+
+  if (settings.style === "slowBloom") {
+    const bloom = Math.sin(p * Math.PI);
+    base.iconScale = 1 + bloom * Math.min(scaleDelta, 0.08);
+    base.opacity = 0.9 + bloom * 0.1;
+    base.glow = bloom * 0.36;
+    base.ringScale = ringScaleAt(bloom * 0.5, settings);
+    base.ringOpacity = bloom * settings.ringOpacity * 0.42;
+  }
+
+  if (settings.style === "softDisappear") {
+    const fade = ease(p, settings.easing);
+    base.opacity = 1 - fade * (1 - settings.minOpacity);
+    base.iconScale = 1 - fade * Math.min(scaleDelta, 0.08);
+    base.glow = (1 - fade) * 0.28;
+    base.ringOpacity *= 1 - fade;
+  }
+
+  if (settings.style === "softDissolve") {
+    const dissolve = ease(p, settings.easing);
+    base.opacity = 1 - dissolve * (1 - settings.minOpacity) * 0.35;
+    base.dissolve = dissolve;
+    base.glow = (1 - dissolve) * 0.25;
+    base.ringOpacity *= 1 - dissolve;
+  }
+
+  if (settings.style === "shapeRightToLeft") {
+    const visible = 1 - ease(p, settings.easing);
+    base.maskDirection = "leftToRight";
+    base.maskProgress = visible;
+    base.opacity = settings.minOpacity + visible * (1 - settings.minOpacity);
+    base.glow = visible * 0.22;
+    base.ringOpacity *= visible;
+  }
+
+  if (settings.style === "shapeLeftToRight") {
+    const visible = 1 - ease(p, settings.easing);
+    base.maskDirection = "rightToLeft";
+    base.maskProgress = visible;
+    base.opacity = settings.minOpacity + visible * (1 - settings.minOpacity);
+    base.glow = visible * 0.22;
+    base.ringOpacity *= visible;
+  }
+
+  if (settings.style === "shapeTopDown") {
+    const visible = 1 - ease(p, settings.easing);
+    base.maskDirection = "bottomToTop";
+    base.maskProgress = visible;
+    base.opacity = settings.minOpacity + visible * (1 - settings.minOpacity);
+    base.glow = visible * 0.22;
+    base.ringOpacity *= visible;
+  }
+
+  if (settings.style === "shapeBottomUp") {
+    const visible = 1 - ease(p, settings.easing);
+    base.maskDirection = "topToBottom";
+    base.maskProgress = visible;
+    base.opacity = settings.minOpacity + visible * (1 - settings.minOpacity);
+    base.glow = visible * 0.22;
+    base.ringOpacity *= visible;
+  }
+
+  if (settings.style === "revealLeftToRight") {
+    const reveal = ease(p, settings.easing);
+    base.maskDirection = "leftToRight";
+    base.maskProgress = reveal;
+    base.opacity = settings.minOpacity + reveal * (1 - settings.minOpacity);
+    base.glow = reveal * 0.26;
+    base.ringOpacity *= reveal;
+  }
+
+  if (settings.style === "revealRightToLeft") {
+    const reveal = ease(p, settings.easing);
+    base.maskDirection = "rightToLeft";
+    base.maskProgress = reveal;
+    base.opacity = settings.minOpacity + reveal * (1 - settings.minOpacity);
+    base.glow = reveal * 0.26;
+    base.ringOpacity *= reveal;
+  }
+
+  if (settings.style === "revealTopDown") {
+    const reveal = ease(p, settings.easing);
+    base.maskDirection = "topToBottom";
+    base.maskProgress = reveal;
+    base.opacity = settings.minOpacity + reveal * (1 - settings.minOpacity);
+    base.glow = reveal * 0.26;
+    base.ringOpacity *= reveal;
+  }
+
+  if (settings.style === "revealBottomUp") {
+    const reveal = ease(p, settings.easing);
+    base.maskDirection = "bottomToTop";
+    base.maskProgress = reveal;
+    base.opacity = settings.minOpacity + reveal * (1 - settings.minOpacity);
+    base.glow = reveal * 0.26;
+    base.ringOpacity *= reveal;
+  }
+
+  if (settings.style === "irisDisappear") {
+    const close = ease(p, settings.easing);
+    const visible = 1 - close;
+    base.maskDirection = "centerIn";
+    base.maskProgress = close;
+    base.opacity = settings.minOpacity + visible * (1 - settings.minOpacity);
+    base.glow = visible * 0.25;
+    base.ringOpacity *= visible;
+  }
+
+  if (settings.style === "irisReveal") {
+    const open = ease(p, settings.easing);
+    base.maskDirection = "centerOut";
+    base.maskProgress = open;
+    base.opacity = settings.minOpacity + open * (1 - settings.minOpacity);
+    base.glow = open * 0.25;
+    base.ringOpacity *= open;
+  }
+
   if (
     !settings.ringEnabled &&
     settings.style !== "radar" &&
@@ -561,7 +805,9 @@ export function frameState(progress: number, settings: AnimationSettings): Frame
     settings.style !== "pingDoubleRing" &&
     settings.style !== "clickRipple" &&
     settings.style !== "breathingRing" &&
-    settings.style !== "focusHalo"
+    settings.style !== "focusHalo" &&
+    settings.style !== "quietHalo" &&
+    settings.style !== "slowBloom"
   ) {
     base.ringOpacity = 0;
     base.secondRingOpacity = 0;
