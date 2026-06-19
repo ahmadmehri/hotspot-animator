@@ -1,0 +1,25 @@
+node_modules/
+dist/
+.vite/
+npm-debug.log*
+vite-dev*.log
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Python packaging/build output
+hotspot-animator-python/build/
+hotspot-animator-python/dist/
+hotspot-animator-python/installer-output/
+hotspot-animator-python/*.spec
+hotspot-animator-python/*.zip
+hotspot-animator-python/selftest_output.*
+hotspot-animator-python/selftest_layers/
+
+# Local/generated output
+output/
+*.log
