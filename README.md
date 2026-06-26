@@ -1,6 +1,6 @@
 # Hotspot Animator
 
-https://github.com/ahmadmehri/hotspot-animator
+https://ahmadmehri.github.io/hotspot-animator/
 
 Create 3DVista-friendly animated hotspot graphics from a transparent PNG.
 
