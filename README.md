@@ -10,6 +10,8 @@ Hotspot Animator is a simple desktop-style web app for virtual tour creators who
 
 ## Sample Animation
 
+![Hotspot Animator sample animation](public/Test.mp4)
+
 ![Hotspot Animator sample animation](public/sample2.gif)
 
 
