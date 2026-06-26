@@ -1,5 +1,7 @@
 # Hotspot Animator
 
+https://github.com/ahmadmehri/hotspot-animator
+
 Create 3DVista-friendly animated hotspot graphics from a transparent PNG.
 
 Hotspot Animator is a simple desktop-style web app for virtual tour creators who want to turn static hotspot icons into attention-grabbing APNG animations. Import a PNG, choose an animation style, fine-tune the motion, preview it live, and export an animated PNG that can be used in 3DVista as a hotspot graphic.
