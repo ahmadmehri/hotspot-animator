@@ -12,11 +12,13 @@ __pycache__/
 venv/
 
 # Python packaging/build output
+# Note: "Hotspot Animator.spec" IS tracked on purpose (it is the maintained
+# build definition that build_exe.ps1 uses), so *.spec is not ignored here.
 hotspot-animator-python/build/
 hotspot-animator-python/dist/
 hotspot-animator-python/installer-output/
-hotspot-animator-python/*.spec
 hotspot-animator-python/*.zip
+hotspot-animator-python/main_original_backup.py
 hotspot-animator-python/selftest_output.*
 hotspot-animator-python/selftest_layers/
 
