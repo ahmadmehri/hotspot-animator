@@ -10,8 +10,6 @@ Hotspot Animator is a simple desktop-style web app for virtual tour creators who
 
 ## Sample Animation
 
-![Hotspot Animator sample animation](public/sample3.gif)
-
 
 ![Hotspot Animator sample animation](public/sample2.gif)
 
@@ -106,6 +104,9 @@ http://localhost:5173/
 ```
 
 Copy that address and open it in your browser.
+
+![Hotspot Animator sample animation](public/sample3.gif)
+
 
 ## Features
 
