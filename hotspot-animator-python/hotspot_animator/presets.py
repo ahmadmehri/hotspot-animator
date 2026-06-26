@@ -1,0 +1,159 @@
+"""Factory and user preset helpers."""
+
+from __future__ import annotations
+
+import json
+from dataclasses import asdict, replace
+from pathlib import Path
+from typing import Any
+
+from .settings import AnimationSettings
+
+PRESET_VERSION = 1
+USER_PRESET_DIR = Path.home() / ".hotspot-animator"
+USER_PRESET_FILE = USER_PRESET_DIR / "user_presets.json"
+
+
+BASE = asdict(AnimationSettings())
+BASE.pop("filename", None)
+
+DISAPPEAR_BASE = {
+    **BASE,
+    "duration": 1300,
+    "fps": 24,
+    "scaleAmount": 1.04,
+    "minOpacity": 0.05,
+    "glowBlur": 12,
+    "glowOpacity": 0.24,
+    "ringEnabled": False,
+    "easing": "easeInOut",
+    "optimizationMode": "small",
+    "colorLimit": 128,
+}
+
+
+FACTORY_PRESETS: list[dict[str, Any]] = [
+    {"id": "factory-soft-pulse", "name": "Soft Pulse", "kind": "factory",
+     "settings": {**BASE, "style": "pulse", "scaleAmount": 1.18, "glowOpacity": 0.45, "ringExpansion": 1.55}},
+    {"id": "factory-vr-subtle", "name": "VR Subtle", "kind": "factory",
+     "settings": {**BASE, "style": "breathe", "duration": 1900, "fps": 24, "scaleAmount": 1.12, "glowOpacity": 0.32, "ringEnabled": False}},
+    {"id": "factory-strong-callout", "name": "Strong Callout", "kind": "factory",
+     "settings": {**BASE, "style": "attention", "scaleAmount": 1.35, "rotation": 18, "bounce": 24, "glowOpacity": 0.75, "ringExpansion": 2.05}},
+    {"id": "factory-horizontal-float", "name": "Horizontal Float", "kind": "factory",
+     "settings": {**BASE, "style": "floatHorizontal", "duration": 1800, "shake": 26, "scaleAmount": 1.1, "ringEnabled": False}},
+    {"id": "factory-clean-radar", "name": "Clean Radar", "kind": "factory",
+     "settings": {**BASE, "style": "radar", "duration": 1600, "scaleAmount": 1, "glowOpacity": 0.25, "ringThickness": 3, "ringExpansion": 2.2, "ringOpacity": 0.8}},
+    {"id": "factory-ring-draw", "name": "Ring Draw", "kind": "factory",
+     "settings": {**BASE, "style": "ringDraw", "duration": 1300, "scaleAmount": 1.08, "glowOpacity": 0.45, "ringThickness": 5, "ringStartSize": 1.1, "ringExpansion": 1.1, "ringOpacity": 0.9}},
+    {"id": "factory-slide-right", "name": "Slide Right", "kind": "factory",
+     "settings": {**BASE, "style": "slideRight", "duration": 1100, "shake": 42, "scaleAmount": 1.08, "minOpacity": 0.15, "ringEnabled": False}},
+    {"id": "factory-slide-down", "name": "Slide Down", "kind": "factory",
+     "settings": {**BASE, "style": "slideDown", "duration": 1100, "bounce": 42, "scaleAmount": 1.08, "minOpacity": 0.15, "ringEnabled": False}},
+    {"id": "factory-far-zoom-in", "name": "Far Zoom In", "kind": "factory",
+     "settings": {**BASE, "style": "farZoomIn", "duration": 1200, "scaleAmount": 1.45, "minOpacity": 0.08, "glowOpacity": 0.65, "ringExpansion": 1.7}},
+    {"id": "factory-ping-double-ring", "name": "Ping Double Ring", "kind": "factory",
+     "settings": {**BASE, "style": "pingDoubleRing", "duration": 1500, "fps": 24, "scaleAmount": 1.08, "glowOpacity": 0.42, "ringThickness": 4, "ringStartSize": 0.3, "ringExpansion": 2.1, "ringOpacity": 0.76, "optimizationMode": "small", "colorLimit": 128}},
+    {"id": "factory-focus-halo", "name": "Focus Halo", "kind": "factory",
+     "settings": {**BASE, "style": "focusHalo", "duration": 1700, "fps": 24, "scaleAmount": 1.08, "glowBlur": 20, "glowOpacity": 0.58, "ringThickness": 4, "ringStartSize": 1, "ringExpansion": 1.28, "ringOpacity": 0.72}},
+    {"id": "factory-vr-gentle-pulse", "name": "VR Gentle Pulse", "kind": "factory",
+     "settings": {**BASE, "style": "vrGentlePulse", "duration": 1900, "fps": 20, "scaleAmount": 1.08, "glowBlur": 10, "glowOpacity": 0.26, "ringEnabled": False, "optimizationMode": "small", "colorLimit": 128}},
+    {"id": "factory-velvet-breath", "name": "Velvet Breath", "kind": "factory",
+     "settings": {**BASE, "style": "velvetBreath", "duration": 2200, "fps": 24, "scaleAmount": 1.09, "minOpacity": 0.9, "glowBlur": 16, "glowOpacity": 0.34, "ringThickness": 3, "ringExpansion": 1.36, "ringOpacity": 0.42, "optimizationMode": "small", "colorLimit": 128}},
+    {"id": "factory-silk-drift", "name": "Silk Drift", "kind": "factory",
+     "settings": {**BASE, "style": "silkDrift", "duration": 2400, "fps": 24, "scaleAmount": 1.05, "bounce": 12, "shake": 12, "glowBlur": 14, "glowOpacity": 0.28, "ringEnabled": False, "optimizationMode": "small", "colorLimit": 128}},
+    {"id": "factory-quiet-halo", "name": "Quiet Halo", "kind": "factory",
+     "settings": {**BASE, "style": "quietHalo", "duration": 2300, "fps": 24, "scaleAmount": 1.06, "glowBlur": 18, "glowOpacity": 0.3, "ringThickness": 3, "ringStartSize": 0.96, "ringExpansion": 1.28, "ringOpacity": 0.5, "optimizationMode": "small", "colorLimit": 128}},
+    {"id": "factory-pearl-shimmer", "name": "Pearl Shimmer", "kind": "factory",
+     "settings": {**BASE, "style": "pearlShimmer", "duration": 2100, "fps": 24, "scaleAmount": 1.04, "glowBlur": 12, "glowOpacity": 0.3, "ringEnabled": False, "optimizationMode": "small", "colorLimit": 128}},
+    {"id": "factory-calm-orbit", "name": "Calm Orbit", "kind": "factory",
+     "settings": {**BASE, "style": "calmOrbit", "duration": 2600, "fps": 24, "scaleAmount": 1.04, "rotation": 6, "bounce": 10, "shake": 10, "glowBlur": 14, "glowOpacity": 0.28, "ringEnabled": False, "optimizationMode": "small", "colorLimit": 128}},
+    {"id": "factory-slow-bloom", "name": "Slow Bloom", "kind": "factory",
+     "settings": {**BASE, "style": "slowBloom", "duration": 2500, "fps": 24, "scaleAmount": 1.08, "minOpacity": 0.88, "glowBlur": 18, "glowOpacity": 0.36, "ringThickness": 3, "ringStartSize": 0.86, "ringExpansion": 1.42, "ringOpacity": 0.5, "optimizationMode": "small", "colorLimit": 128}},
+    {"id": "factory-soft-disappear", "name": "Soft Disappear", "kind": "factory",
+     "settings": {**DISAPPEAR_BASE, "style": "softDisappear", "duration": 1500, "scaleAmount": 1.08}},
+    {"id": "factory-soft-dissolve", "name": "Soft Dissolve", "kind": "factory",
+     "settings": {**DISAPPEAR_BASE, "style": "softDissolve", "duration": 1500, "glowOpacity": 0.2}},
+    {"id": "factory-shape-right-to-left", "name": "Shape Right to Left", "kind": "factory",
+     "settings": {**DISAPPEAR_BASE, "style": "shapeRightToLeft"}},
+    {"id": "factory-shape-left-to-right", "name": "Shape Left to Right", "kind": "factory",
+     "settings": {**DISAPPEAR_BASE, "style": "shapeLeftToRight"}},
+    {"id": "factory-shape-top-down", "name": "Shape Top Down", "kind": "factory",
+     "settings": {**DISAPPEAR_BASE, "style": "shapeTopDown"}},
+    {"id": "factory-shape-bottom-up", "name": "Shape Bottom Up", "kind": "factory",
+     "settings": {**DISAPPEAR_BASE, "style": "shapeBottomUp"}},
+    {"id": "factory-reveal-left-to-right", "name": "Reveal Left to Right", "kind": "factory",
+     "settings": {**DISAPPEAR_BASE, "style": "revealLeftToRight", "duration": 1200}},
+    {"id": "factory-reveal-right-to-left", "name": "Reveal Right to Left", "kind": "factory",
+     "settings": {**DISAPPEAR_BASE, "style": "revealRightToLeft", "duration": 1200}},
+    {"id": "factory-reveal-top-down", "name": "Reveal Top Down", "kind": "factory",
+     "settings": {**DISAPPEAR_BASE, "style": "revealTopDown", "duration": 1200}},
+    {"id": "factory-reveal-bottom-up", "name": "Reveal Bottom Up", "kind": "factory",
+     "settings": {**DISAPPEAR_BASE, "style": "revealBottomUp", "duration": 1200}},
+    {"id": "factory-iris-disappear", "name": "Iris Disappear", "kind": "factory",
+     "settings": {**DISAPPEAR_BASE, "style": "irisDisappear", "duration": 1400}},
+    {"id": "factory-iris-reveal", "name": "Iris Reveal", "kind": "factory",
+     "settings": {**DISAPPEAR_BASE, "style": "irisReveal", "duration": 1400}},
+    {"id": "factory-low-file-size", "name": "Low File Size", "kind": "factory",
+     "settings": {**BASE, "style": "flashGlow", "duration": 1200, "fps": 18, "padding": 36, "scaleAmount": 1.14, "glowBlur": 14, "ringExpansion": 1.45, "optimizationMode": "small", "colorLimit": 128}},
+]
+
+
+def settings_to_preset(settings: AnimationSettings) -> dict[str, Any]:
+    data = asdict(settings)
+    data.pop("filename", None)
+    return data
+
+
+def apply_preset(settings: AnimationSettings, preset_settings: dict[str, Any]) -> AnimationSettings:
+    allowed = set(asdict(AnimationSettings()).keys()) - {"filename"}
+    changes = {key: value for key, value in preset_settings.items() if key in allowed}
+    return replace(settings, **changes)
+
+
+def load_user_presets() -> list[dict[str, Any]]:
+    try:
+        data = json.loads(USER_PRESET_FILE.read_text(encoding="utf-8"))
+        presets = data.get("presets", data) if isinstance(data, dict) else data
+        if not isinstance(presets, list):
+            return []
+        out = []
+        for item in presets:
+            if isinstance(item, dict) and item.get("name") and isinstance(item.get("settings"), dict):
+                out.append({
+                    "id": item.get("id") or f"user-{len(out) + 1}",
+                    "name": str(item["name"]),
+                    "kind": "user",
+                    "settings": item["settings"],
+                })
+        return out
+    except FileNotFoundError:
+        return []
+    except Exception:
+        return []
+
+
+def save_user_presets(presets: list[dict[str, Any]]) -> None:
+    USER_PRESET_DIR.mkdir(parents=True, exist_ok=True)
+    payload = {"version": PRESET_VERSION, "presets": presets}
+    USER_PRESET_FILE.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+def export_user_presets(presets: list[dict[str, Any]], path: str | Path) -> None:
+    Path(path).write_text(json.dumps({"version": PRESET_VERSION, "presets": presets}, indent=2), encoding="utf-8")
+
+
+def import_user_presets(path: str | Path) -> list[dict[str, Any]]:
+    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    presets = data.get("presets", data) if isinstance(data, dict) else data
+    if not isinstance(presets, list):
+        raise ValueError("Preset file does not contain a presets list.")
+    imported = []
+    for index, item in enumerate(presets):
+        if isinstance(item, dict) and item.get("name") and isinstance(item.get("settings"), dict):
+            imported.append({
+                "id": f"imported-{index}-{abs(hash(item['name']))}",
+                "name": str(item["name"]),
+                "kind": "user",
+                "settings": item["settings"],
+            })
+    return imported
