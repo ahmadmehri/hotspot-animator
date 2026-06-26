@@ -47,13 +47,16 @@ import {
 import {
   CompositeDoc,
   CompositeLayer,
+  ExportFormat,
   ExportProgress,
   PreviewBg,
   SeqTransition,
   SequenceFrame,
   compositeCanvasSize,
+  exportCompositeAnimation,
   compositeTimeline,
   exportCompositeApng,
+  exportSequenceAnimation,
   exportSequenceApng,
   optimizationLabel,
   renderCompositeFrame,
@@ -166,10 +169,72 @@ const optimizationOptions: Array<{ value: OptimizationMode; label: string }> = [
   { value: "tiny", label: "Tiny File" },
   { value: "custom", label: "Custom Colors" }
 ];
+const exportFormatOptions: Array<{
+  value: ExportFormat;
+  label: string;
+  shortLabel: string;
+  extension: string;
+  description: string;
+  accept: Record<string, string[]>;
+}> = [
+  {
+    value: "apng",
+    label: "APNG",
+    shortLabel: "APNG",
+    extension: ".apng",
+    description: "Animated PNG",
+    accept: { "image/apng": [".apng"], "image/png": [".png"] }
+  },
+  {
+    value: "webp",
+    label: "Animated WebP",
+    shortLabel: "WebP",
+    extension: ".webp",
+    description: "Animated WebP",
+    accept: { "image/webp": [".webp"] }
+  },
+  {
+    value: "gif",
+    label: "GIF",
+    shortLabel: "GIF",
+    extension: ".gif",
+    description: "Animated GIF",
+    accept: { "image/gif": [".gif"] }
+  },
+  {
+    value: "webm",
+    label: "WebM video",
+    shortLabel: "WebM",
+    extension: ".webm",
+    description: "WebM video",
+    accept: { "video/webm": [".webm"] }
+  },
+  {
+    value: "rotate-package",
+    label: "3DVista drag rotate ZIP",
+    shortLabel: "3DVista Rotate",
+    extension: "-3dvista-rotate.zip",
+    description: "3DVista drag rotate package",
+    accept: { "application/zip": [".zip"] }
+  }
+];
 const userPresetStorageKey = "hotspot-animator-user-presets";
 const themeStorageKey = "hotspot-animator-theme";
 const previewBgStorageKey = "hotspot-animator-preview-bg";
 const settingsStorageKey = "hotspot-animator-settings";
+const supportedImageExtensions = [".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".svg", ".avif", ".ico"];
+const supportedImageAccept = [
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/gif",
+  "image/bmp",
+  "image/svg+xml",
+  "image/avif",
+  "image/x-icon",
+  ...supportedImageExtensions
+].join(",");
+const supportedImageLabel = "PNG, JPG, WebP, GIF, BMP, SVG, AVIF, or ICO";
 
 type Theme = "light" | "dark";
 
@@ -210,7 +275,7 @@ type DirectoryPickerWindow = Window & {
   showSaveFilePicker?: (options: OutputSaveFilePickerOptions) => Promise<OutputFileHandle>;
 };
 
-// Document-level settings apply to the whole exported APNG (one canvas, one
+// Document-level settings apply to the whole exported animation (one canvas, one
 // output file). Everything else in AnimationSettings is per-layer animation.
 interface DocSettings {
   fps: number;
@@ -260,6 +325,11 @@ const transitionOptions: Array<{ value: SeqTransition; label: string }> = [
   { value: "wipeUp", label: "Wipe ↑" },
   { value: "iris", label: "Iris" }
 ];
+const rotatePackageFrameTiming = {
+  holdMs: 0,
+  transition: "cut" as SeqTransition,
+  transitionMs: 0
+};
 
 function loadInitialMode(): AppMode {
   try {
@@ -364,10 +434,10 @@ function loadInitialPreviewBg(): PreviewBg {
 }
 
 const tips = {
-  export: "Save a 3DVista-ready APNG.",
-  import: "Load one transparent PNG.",
+  export: "Save the current animation.",
+  import: "Load one image file.",
   reset: "Reset the selected layer's animation to defaults.",
-  dropZone: "Drop or choose a PNG hotspot.",
+  dropZone: "Drop or choose a hotspot image.",
   tourProfile: "Apply safe 3DVista defaults.",
   animationStyle: "Choose the motion effect.",
   duration: "Total animation length.",
@@ -380,9 +450,9 @@ const tips = {
   fps: "Frames per second.",
   delay: "Pause before repeating.",
   padding: "Adds room around motion.",
-  exportScale: "Resize exported APNG.",
+  exportScale: "Resize exported frames.",
   optimization: "Balance quality and file size.",
-  colorLimit: "Limit APNG color count.",
+  colorLimit: "Limit APNG/GIF color count.",
   minOpacity: "Lowest fade level.",
   glowColor: "Glow effect color.",
   glowBlur: "Glow softness.",
@@ -395,12 +465,12 @@ const tips = {
   background: "Preview canvas color only.",
   filename: "Export file name.",
   advanced: "Fine-tune export settings.",
-  batch: "Export many PNGs at once.",
+  batch: "Export many images at once.",
   presets: "Save or reuse settings.",
-  addBatch: "Add PNGs to the queue.",
+  addBatch: "Add images to the queue.",
   exportBatch: "Export queue as a ZIP.",
   clearBatch: "Empty the batch queue.",
-  previewBatch: "Use this PNG in preview.",
+  previewBatch: "Use this image in preview.",
   presetLibrary: "Choose a saved preset.",
   presetName: "Name for a user preset.",
   applyPreset: "Use selected preset.",
@@ -589,7 +659,7 @@ export function App() {
   const [batchExporting, setBatchExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState<ExportProgress | null>(null);
   const [batchProgress, setBatchProgress] = useState<ExportProgress | null>(null);
-  const [message, setMessage] = useState("Import a transparent PNG to begin.");
+  const [message, setMessage] = useState("Import an image to begin.");
   const [userPresets, setUserPresets] = useState<Preset[]>(() => loadUserPresets());
   const [selectedPresetId, setSelectedPresetId] = useState(factoryPresets[0]?.id ?? "");
   const [presetName, setPresetName] = useState("My hotspot preset");
@@ -611,6 +681,7 @@ export function App() {
     saveAs: typeof (window as DirectoryPickerWindow).showSaveFilePicker === "function"
   }));
   const [outputStatus, setOutputStatus] = useState("");
+  const [exportFormat, setExportFormat] = useState<ExportFormat>("apng");
   const playheadRef = useRef(0);
   const hasLayersRef = useRef(false);
   const activeLayerIdRef = useRef("");
@@ -677,6 +748,8 @@ export function App() {
   );
   const allPresets = useMemo(() => [...factoryPresets, ...userPresets], [userPresets]);
   const selectedPreset = allPresets.find((preset) => preset.id === selectedPresetId) ?? allPresets[0];
+  const selectedExportFormat =
+    exportFormatOptions.find((option) => option.value === exportFormat) ?? exportFormatOptions[0];
   const warnings = useMemo(() => tourWarnings(effective, null), [effective]);
 
   const snapshot = useMemo<DocSnapshot>(
@@ -911,7 +984,7 @@ export function App() {
     setIsPlaying(true);
     setPlayhead(0);
     playheadRef.current = 0;
-    setMessage("New project started. Import a PNG to begin.");
+    setMessage("New project started. Import an image to begin.");
   }, []);
 
   // ---- Keyboard shortcuts ----
@@ -984,6 +1057,13 @@ export function App() {
     );
   }, []);
 
+  const updateExportFormat = useCallback((nextFormat: ExportFormat) => {
+    setExportFormat(nextFormat);
+    if (nextFormat !== "rotate-package") return;
+    setLayers((current) => current.map((layer) => ({ ...layer, ...rotatePackageFrameTiming })));
+    setMessage("3DVista drag rotate selected: all sequence frames set to Hold 0 and Cut.");
+  }, []);
+
   const applyActiveTimingToAllFrames = useCallback(() => {
     const active = layersRef.current.find((layer) => layer.id === activeLayerIdRef.current);
     if (!active) return;
@@ -999,6 +1079,9 @@ export function App() {
   const addLayerFromImage = useCallback(
     (image: SourceImage, makeActive = true) => {
       const layer = makeLayer(image, { ...draftSettingsRef.current });
+      if (exportFormat === "rotate-package") {
+        Object.assign(layer, rotatePackageFrameTiming);
+      }
       setLayers((current) => [...current, layer]);
       if (makeActive) setActiveLayerId(layer.id);
       setDoc((current) =>
@@ -1006,7 +1089,7 @@ export function App() {
       );
       return layer;
     },
-    []
+    [exportFormat]
   );
 
   const removeLayer = useCallback((id: string) => {
@@ -1215,15 +1298,13 @@ export function App() {
 
   const importLayerFiles = useCallback(
     async (files: FileList | File[]) => {
-      const pngFiles = Array.from(files).filter(
-        (file) => file.type.includes("png") || file.name.toLowerCase().endsWith(".png")
-      );
-      if (pngFiles.length === 0) {
-        setMessage("Choose one or more transparent PNG files.");
+      const imageFiles = Array.from(files).filter(isSupportedImageFile);
+      if (imageFiles.length === 0) {
+        setMessage(`Choose one or more supported image files (${supportedImageLabel}).`);
         return;
       }
       try {
-        const loaded = await Promise.all(pngFiles.map(loadSourceImage));
+        const loaded = await Promise.all(imageFiles.map(loadSourceImage));
         let lastId = "";
         loaded.forEach((image) => {
           lastId = addLayerFromImage(image, false).id;
@@ -1231,25 +1312,25 @@ export function App() {
         if (lastId) setActiveLayerId(lastId);
         setMessage(`${loaded.length} layer${loaded.length === 1 ? "" : "s"} added.`);
       } catch (error) {
-        setMessage(error instanceof Error ? error.message : "One or more PNG files could not be loaded.");
+        setMessage(error instanceof Error ? error.message : "One or more image files could not be loaded.");
       }
     },
     [addLayerFromImage]
   );
 
   const importBatchFiles = useCallback(async (files: FileList | File[]) => {
-    const pngFiles = Array.from(files).filter((file) => file.type.includes("png") || file.name.toLowerCase().endsWith(".png"));
-    if (pngFiles.length === 0) {
-      setMessage("Choose one or more PNG files for batch export.");
+    const imageFiles = Array.from(files).filter(isSupportedImageFile);
+    if (imageFiles.length === 0) {
+      setMessage(`Choose one or more supported image files for batch export (${supportedImageLabel}).`);
       return;
     }
 
     try {
-      const loaded = await Promise.all(pngFiles.map(loadSourceImage));
+      const loaded = await Promise.all(imageFiles.map(loadSourceImage));
       setBatchOpen(true);
       setBatchSources((current) => {
-        const existingKeys = new Set(current.map((item) => item.name));
-        const unique = loaded.filter((item) => !existingKeys.has(item.name));
+        const existingKeys = new Set(current.map((item) => item.displayName));
+        const unique = loaded.filter((item) => !existingKeys.has(item.displayName));
         return [...current, ...unique];
       });
 
@@ -1257,9 +1338,9 @@ export function App() {
         addLayerFromImage(loaded[0]);
       }
 
-      setMessage(`${loaded.length} PNG file${loaded.length === 1 ? "" : "s"} added to batch queue.`);
+      setMessage(`${loaded.length} image file${loaded.length === 1 ? "" : "s"} added to batch queue.`);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "One or more PNG files could not be loaded.");
+      setMessage(error instanceof Error ? error.message : "One or more image files could not be loaded.");
     }
   }, [source]);
 
@@ -1405,19 +1486,22 @@ export function App() {
         : "layers";
     setMessage(`Rendering ${frameCount} frames from ${layers.length} ${unitWord}...`);
     try {
+      const baseName = safeFileName(doc.filename.trim() || "hotspot-animated");
       const blob = isSequence
-        ? await exportSequenceApng(seqFrames, compositeDoc, setExportProgress)
-        : await exportCompositeApng(compositeLayers, compositeDoc, setExportProgress);
-      const filename = `${safeFileName(doc.filename.trim() || "hotspot-animated")}.apng`;
+        ? await exportSequenceAnimation(seqFrames, compositeDoc, exportFormat, baseName, setExportProgress)
+        : await exportCompositeAnimation(compositeLayers, compositeDoc, exportFormat, baseName, setExportProgress);
+      const filename = `${baseName}${selectedExportFormat.extension}`;
       let saveTarget: "folder" | "save-as" | "downloads" = "downloads";
       if (outputDirectory) {
         await saveBlobToDirectory(outputDirectory, filename, blob);
         saveTarget = "folder";
       } else {
-        const saveAsResult = await saveBlobWithSavePicker(filename, blob, "Animated PNG", {
-          "image/apng": [".apng"],
-          "image/png": [".png"]
-        });
+        const saveAsResult = await saveBlobWithSavePicker(
+          filename,
+          blob,
+          selectedExportFormat.description,
+          selectedExportFormat.accept
+        );
         if (saveAsResult === "cancelled") {
           setMessage("Export canceled.");
           return;
@@ -1430,13 +1514,13 @@ export function App() {
       }
       setMessage(
         saveTarget === "folder"
-          ? `Animated APNG saved to ${outputDirectoryName || "selected folder"}: ${filename} (${formatBytes(blob.size)}).`
+          ? `${selectedExportFormat.label} saved to ${outputDirectoryName || "selected folder"}: ${filename} (${formatBytes(blob.size)}).`
           : saveTarget === "save-as"
-            ? `Animated APNG saved: ${filename} (${formatBytes(blob.size)}).`
-          : `Animated APNG exported and verified: ${formatBytes(blob.size)} using ${optimizationLabel(effective)}.`
+            ? `${selectedExportFormat.label} saved: ${filename} (${formatBytes(blob.size)}).`
+          : `${selectedExportFormat.label} exported: ${filename} (${formatBytes(blob.size)}).`
       );
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "APNG export failed.");
+      setMessage(error instanceof Error ? error.message : `${selectedExportFormat.label} export failed.`);
     } finally {
       setExporting(false);
       window.setTimeout(() => setExportProgress(null), 900);
@@ -1445,7 +1529,7 @@ export function App() {
 
   const onBatchExport = async () => {
     if (batchSources.length === 0) {
-      setMessage("Add PNG files to the batch queue before exporting.");
+      setMessage("Add image files to the batch queue before exporting.");
       return;
     }
 
@@ -1554,7 +1638,7 @@ export function App() {
             <img src={hotspotAnimatorIcon} alt="" aria-hidden="true" />
             <div>
               <h1>Hotspot Animator</h1>
-              <p>Design transparent APNG hotspot animations for 3DVista.</p>
+              <p>Design transparent hotspot animations for 3DVista and the web.</p>
             </div>
           </div>
           <div className="topbar-actions">
@@ -1607,16 +1691,34 @@ export function App() {
               <FolderOpen size={18} />
               <span>{outputDirectory ? outputDirectoryName || "Output folder" : "Output folder"}</span>
             </button>
+            <label className="export-format-control" title="Choose export format">
+              <FileImage size={17} />
+              <select
+                value={exportFormat}
+                disabled={exporting}
+                onChange={(event) => updateExportFormat(event.target.value as ExportFormat)}
+                aria-label="Export format"
+              >
+                {exportFormatOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
             <button
               className="primary-action"
               onClick={onExport}
-              disabled={!source || exporting}
+              disabled={!hasLayers || exporting}
               title={tips.export}
               aria-label={tips.export}
             >
               {exporting ? <Loader2 className="spin" size={18} /> : <Download size={18} />}
-              Export APNG
+              Export {selectedExportFormat.shortLabel}
             </button>
+            {exportProgress ? (
+              <ExportProgressPanel progress={exportProgress} formatLabel={selectedExportFormat.shortLabel} />
+            ) : null}
           </div>
         </div>
 
@@ -1704,14 +1806,14 @@ export function App() {
               ) : (
                 <button className="empty-import" onClick={() => inputRef.current?.click()} title={tips.import}>
                   <ImagePlus size={42} />
-                  <span>Drop transparent PNGs or choose files</span>
+                  <span>Drop images or choose files</span>
                 </button>
               )}
               <input
                 ref={inputRef}
                 className="hidden-input"
                 type="file"
-                accept="image/png"
+                accept={supportedImageAccept}
                 multiple
                 onChange={(event) => {
                   const files = event.currentTarget.files;
@@ -1799,12 +1901,12 @@ export function App() {
                       : animationLabels[settings.style]}
                 </span>
               </div>
-              <div className="metric" title="APNG colour optimization (set in Advanced Settings)">
+              <div className="metric" title="Color optimization for APNG/GIF exports">
                 <Gauge size={18} />
                 <span>{optimizationLabel(effective)}</span>
               </div>
               {hasLayers ? (
-                <div className="metric" title="Pixel dimensions of the exported APNG">
+                <div className="metric" title="Pixel dimensions of each exported frame">
                   <Download size={18} />
                   <span>
                     Export {canvasSize.width} x {canvasSize.height}px
@@ -1828,23 +1930,6 @@ export function App() {
                 )}
               </div>
               <p className="status">{message}</p>
-              {exportProgress ? (
-                <div className="progress-panel" aria-live="polite">
-                  <div className="progress-label">
-                    <span>{progressLabel(exportProgress)}</span>
-                    <strong>{exportProgress.percent}%</strong>
-                  </div>
-                  <div
-                    className="progress-track"
-                    role="progressbar"
-                    aria-valuemin={0}
-                    aria-valuemax={100}
-                    aria-valuenow={exportProgress.percent}
-                  >
-                    <span style={{ width: `${exportProgress.percent}%` }} />
-                  </div>
-                </div>
-              ) : null}
             </aside>
           </section>
 
@@ -1976,7 +2061,7 @@ export function App() {
                 <span>
                   {isSequence
                     ? `This sequence is long, so it was capped at ${frameCount} frames — lower the FPS or shorten holds/transitions for a smoother result.`
-                    : `Layer durations don't share a clean loop, so the combined APNG (${frameCount} frames) may jump when it repeats. Match durations (or their multiples) for a seamless loop.`}
+                    : `Layer durations don't share a clean loop, so the combined animation (${frameCount} frames) may jump when it repeats. Match durations (or their multiples) for a seamless loop.`}
                 </span>
               </div>
             ) : null}
@@ -1992,7 +2077,7 @@ export function App() {
 
         <Disclosure
           title={`${isSequence ? "Frames" : "Layers"}${hasLayers ? ` (${layers.length})` : ""}`}
-          tooltip={isSequence ? "Order the images that play in sequence." : "Stack several PNGs, each with its own animation."}
+          tooltip={isSequence ? "Order the images that play in sequence." : "Stack several images, each with its own animation."}
           tone="advanced"
           open={layersOpen}
           onToggle={() => setLayersOpen((current) => !current)}
@@ -2001,7 +2086,7 @@ export function App() {
             <button
               className="layers-add"
               onClick={() => layersInputRef.current?.click()}
-              title={isSequence ? "Add one or more PNGs as frames" : "Add one or more PNGs as layers"}
+              title={isSequence ? "Add one or more images as frames" : "Add one or more images as layers"}
             >
               <ImagePlus size={16} />
               {isSequence ? "Add frames" : "Add layers"}
@@ -2010,7 +2095,7 @@ export function App() {
               ref={layersInputRef}
               className="hidden-input"
               type="file"
-              accept="image/png"
+              accept={supportedImageAccept}
               multiple
               onChange={(event) => {
                 const files = event.currentTarget.files;
@@ -2079,7 +2164,7 @@ export function App() {
               <p className="setting-note">
                 {isSequence
                   ? "No frames yet. Use “Add frames” to import the images that will play in sequence."
-                  : "No layers yet. Import a PNG or use “Add layers” to stack several."}
+                  : "No layers yet. Import an image or use “Add layers” to stack several."}
               </p>
             )}
 
@@ -2142,10 +2227,10 @@ export function App() {
                 ))}
               </select>
             </label>
-            <NumberField label="FPS" tooltip={`${tips.fps} (whole APNG)`} min={8} max={60} step={1} value={doc.fps} onChange={(value) => updateDoc("fps", value)} />
+            <NumberField label="FPS" tooltip={`${tips.fps} (whole export)`} min={8} max={60} step={1} value={doc.fps} onChange={(value) => updateDoc("fps", value)} />
             <NumberField label="Delay" tooltip={`${tips.delay} (this layer)`} suffix="ms" min={0} max={5000} step={50} value={settings.delay} onChange={(value) => update("delay", value)} />
-            <NumberField label="Padding" tooltip={`${tips.padding} (whole APNG)`} suffix="px" min={0} max={240} step={1} value={doc.padding} onChange={(value) => updateDoc("padding", value)} />
-            <NumberField label="Export scale" tooltip={`${tips.exportScale} (whole APNG)`} min={0.25} max={4} step={0.05} value={doc.exportScale} onChange={(value) => updateDoc("exportScale", value)} />
+            <NumberField label="Padding" tooltip={`${tips.padding} (whole export)`} suffix="px" min={0} max={240} step={1} value={doc.padding} onChange={(value) => updateDoc("padding", value)} />
+            <NumberField label="Export scale" tooltip={`${tips.exportScale} (whole export)`} min={0.25} max={4} step={0.05} value={doc.exportScale} onChange={(value) => updateDoc("exportScale", value)} />
             <label className="field wide" title={tips.optimization}>
               <span>File optimization</span>
               <select
@@ -2170,7 +2255,7 @@ export function App() {
               onChange={(value) => updateDoc("colorLimit", value)}
             />
             <p className="setting-note wide">
-              Smaller color limits usually reduce APNG size. Use Quality for gradients or soft shadows.
+              Smaller color limits usually reduce APNG/GIF size. WebP and WebM use these modes as quality guidance.
             </p>
             <NumberField label="Min opacity" tooltip={tips.minOpacity} min={0.05} max={1} step={0.01} value={settings.minOpacity} disabled={!supports("opacity")} onChange={(value) => update("minOpacity", value)} />
             <ColorField label="Glow color" tooltip={tips.glowColor} value={settings.glowColor} disabled={!supports("glow")} onChange={(value) => update("glowColor", value)} />
@@ -2210,7 +2295,7 @@ export function App() {
             <div className="batch-actions">
               <button onClick={() => batchInputRef.current?.click()} disabled={batchExporting} title={tips.addBatch}>
                 <ImagePlus size={16} />
-                Add PNGs
+                Add images
               </button>
               <button onClick={onBatchExport} disabled={batchExporting || batchSources.length === 0} title={tips.exportBatch}>
                 {batchExporting ? <Loader2 className="spin" size={16} /> : <Download size={16} />}
@@ -2225,7 +2310,7 @@ export function App() {
               ref={batchInputRef}
               className="hidden-input"
               type="file"
-              accept="image/png"
+              accept={supportedImageAccept}
               multiple
               onChange={(event) => {
                 const files = event.currentTarget.files;
@@ -2234,7 +2319,7 @@ export function App() {
               }}
             />
             <div className="batch-summary">
-              <span>{batchSources.length} PNG file{batchSources.length === 1 ? "" : "s"} queued</span>
+              <span>{batchSources.length} image file{batchSources.length === 1 ? "" : "s"} queued</span>
               <span>{animationLabels[settings.style]}</span>
             </div>
             {batchProgress ? (
@@ -2261,10 +2346,10 @@ export function App() {
                     key={`${item.name}-${index}`}
                     onClick={() => addLayerFromImage(item)}
                     disabled={batchExporting}
-                    title="Add this PNG as a layer"
+                    title="Add this image as a layer"
                   >
                     <FileImage size={15} />
-                    <span>{item.name}.png</span>
+                    <span>{item.displayName}</span>
                   </button>
                 ))}
               </div>
@@ -2413,8 +2498,28 @@ export function App() {
   );
 }
 
-function progressLabel(progress: ExportProgress) {
-  if (progress.phase === "encoding") return "Encoding APNG";
+function ExportProgressPanel({ progress, formatLabel }: { progress: ExportProgress; formatLabel: string }) {
+  return (
+    <div className="progress-panel export-progress-panel" aria-live="polite">
+      <div className="progress-label">
+        <span>{progressLabel(progress, formatLabel)}</span>
+        <strong>{progress.percent}%</strong>
+      </div>
+      <div
+        className="progress-track"
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={progress.percent}
+      >
+        <span style={{ width: `${progress.percent}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function progressLabel(progress: ExportProgress, formatLabel = "export") {
+  if (progress.phase === "encoding") return `Encoding ${formatLabel}`;
   if (progress.phase === "done") return "Export ready";
   return `Rendering frame ${progress.completed} of ${progress.total}`;
 }
@@ -2429,6 +2534,23 @@ function formatBytes(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
+}
+
+function isSupportedImageFile(file: File) {
+  const lowerName = file.name.toLowerCase();
+  return (
+    supportedImageExtensions.some((extension) => lowerName.endsWith(extension)) ||
+    [
+      "image/png",
+      "image/jpeg",
+      "image/webp",
+      "image/gif",
+      "image/bmp",
+      "image/svg+xml",
+      "image/avif",
+      "image/x-icon"
+    ].includes(file.type)
+  );
 }
 
 function loadSourceImage(file: File) {
@@ -2452,6 +2574,7 @@ function loadSourceImage(file: File) {
         width: image.naturalWidth,
         height: image.naturalHeight,
         name: file.name.replace(/\.[^.]+$/, ""),
+        displayName: file.name,
         previewUrl
       });
     };

@@ -1,4 +1,7 @@
 import UPNG from "upng-js";
+import JSZip from "jszip";
+import { GIFEncoder, applyPalette, quantize } from "gifenc";
+import { encodeAnimation as encodeWebpAnimation } from "wasm-webp";
 import { AnimationSettings, FrameState, OptimizationMode, frameState } from "./animation";
 
 export interface SourceImage {
@@ -6,6 +9,7 @@ export interface SourceImage {
   width: number;
   height: number;
   name: string;
+  displayName: string;
   previewUrl: string;
 }
 
@@ -14,6 +18,19 @@ export interface ExportProgress {
   completed: number;
   total: number;
   percent: number;
+}
+
+export type ExportFormat = "apng" | "webp" | "gif" | "webm" | "rotate-package";
+
+interface RenderedAnimationFrame {
+  data: Uint8ClampedArray<ArrayBuffer>;
+  delayMs: number;
+}
+
+interface RenderedAnimation {
+  width: number;
+  height: number;
+  frames: RenderedAnimationFrame[];
 }
 
 export interface ClippingReport {
@@ -337,11 +354,11 @@ export function compositeCanvasSize(layers: CompositeLayer[], padding: number, e
   };
 }
 
-export async function exportCompositeApng(
+async function renderCompositeAnimation(
   layers: CompositeLayer[],
   doc: CompositeDoc,
   onProgress?: (progress: ExportProgress) => void
-) {
+): Promise<RenderedAnimation> {
   const visible = layers.filter((layer) => layer.visible);
   if (visible.length === 0) throw new Error("Add at least one visible layer before exporting.");
 
@@ -353,15 +370,16 @@ export async function exportCompositeApng(
   const context = canvas.getContext("2d", { willReadFrequently: true });
   if (!context) throw new Error("Could not create canvas renderer.");
 
-  const buffers: ArrayBuffer[] = [];
-  const delays: number[] = [];
+  const frames: RenderedAnimationFrame[] = [];
   const delayMs = Math.max(10, Math.round(1000 / doc.fps));
 
   for (let index = 0; index < frameCount; index += 1) {
     const timeMs = (index / frameCount) * periodMs;
     renderCompositeFrame(context, layers, doc.exportScale, doc.background, timeMs, false);
-    buffers.push(context.getImageData(0, 0, width, height).data.buffer.slice(0));
-    delays.push(delayMs);
+    frames.push({
+      data: copyRgba(context.getImageData(0, 0, width, height).data),
+      delayMs
+    });
     onProgress?.({
       phase: "rendering",
       completed: index + 1,
@@ -371,14 +389,23 @@ export async function exportCompositeApng(
     if (index % 4 === 0) await nextFrame();
   }
 
-  onProgress?.({ phase: "encoding", completed: frameCount, total: frameCount, percent: 92 });
+  return { width, height, frames };
+}
+
+export async function exportCompositeApng(
+  layers: CompositeLayer[],
+  doc: CompositeDoc,
+  onProgress?: (progress: ExportProgress) => void
+) {
+  const rendered = await renderCompositeAnimation(layers, doc, onProgress);
+  onProgress?.({ phase: "encoding", completed: rendered.frames.length, total: rendered.frames.length, percent: 92 });
   await nextFrame();
   const colors = optimizationColorCount({ optimizationMode: doc.optimizationMode, colorLimit: doc.colorLimit });
-  const encoded = UPNG.encode(buffers, width, height, colors, delays);
+  const encoded = encodeApng(rendered, colors);
   if (!hasPngChunk(encoded, "acTL") || !hasPngChunk(encoded, "fcTL")) {
     throw new Error("The encoder produced a static PNG instead of an animated PNG.");
   }
-  onProgress?.({ phase: "done", completed: frameCount, total: frameCount, percent: 100 });
+  onProgress?.({ phase: "done", completed: rendered.frames.length, total: rendered.frames.length, percent: 100 });
   return new Blob([encoded], { type: "image/apng" });
 }
 
@@ -788,11 +815,11 @@ export function renderSequenceFrame(
   drawContained(context, last.image, exportScale * last.scale, centerX, centerY, 1);
 }
 
-export async function exportSequenceApng(
+async function renderSequenceAnimation(
   frames: SequenceFrame[],
   doc: CompositeDoc,
   onProgress?: (progress: ExportProgress) => void
-) {
+): Promise<RenderedAnimation> {
   const visible = frames.filter((frame) => frame.visible);
   if (visible.length === 0) throw new Error("Add at least one frame before exporting.");
 
@@ -804,15 +831,16 @@ export async function exportSequenceApng(
   const context = canvas.getContext("2d", { willReadFrequently: true });
   if (!context) throw new Error("Could not create canvas renderer.");
 
-  const buffers: ArrayBuffer[] = [];
-  const delays: number[] = [];
+  const renderedFrames: RenderedAnimationFrame[] = [];
   const delayMs = Math.max(10, Math.round(1000 / doc.fps));
 
   for (let index = 0; index < frameCount; index += 1) {
     const timeMs = (index / frameCount) * periodMs;
     renderSequenceFrame(context, frames, doc.exportScale, doc.background, timeMs, false);
-    buffers.push(context.getImageData(0, 0, width, height).data.buffer.slice(0));
-    delays.push(delayMs);
+    renderedFrames.push({
+      data: copyRgba(context.getImageData(0, 0, width, height).data),
+      delayMs
+    });
     onProgress?.({
       phase: "rendering",
       completed: index + 1,
@@ -822,15 +850,658 @@ export async function exportSequenceApng(
     if (index % 4 === 0) await nextFrame();
   }
 
-  onProgress?.({ phase: "encoding", completed: frameCount, total: frameCount, percent: 92 });
+  return { width, height, frames: renderedFrames };
+}
+
+export async function exportSequenceApng(
+  frames: SequenceFrame[],
+  doc: CompositeDoc,
+  onProgress?: (progress: ExportProgress) => void
+) {
+  const rendered = await renderSequenceAnimation(frames, doc, onProgress);
+  onProgress?.({ phase: "encoding", completed: rendered.frames.length, total: rendered.frames.length, percent: 92 });
   await nextFrame();
   const colors = optimizationColorCount({ optimizationMode: doc.optimizationMode, colorLimit: doc.colorLimit });
-  const encoded = UPNG.encode(buffers, width, height, colors, delays);
+  const encoded = encodeApng(rendered, colors);
   if (!hasPngChunk(encoded, "acTL") || !hasPngChunk(encoded, "fcTL")) {
     throw new Error("The encoder produced a static PNG instead of an animated PNG.");
   }
-  onProgress?.({ phase: "done", completed: frameCount, total: frameCount, percent: 100 });
+  onProgress?.({ phase: "done", completed: rendered.frames.length, total: rendered.frames.length, percent: 100 });
   return new Blob([encoded], { type: "image/apng" });
+}
+
+async function renderSequenceStillFrames(
+  frames: SequenceFrame[],
+  doc: CompositeDoc,
+  onProgress?: (progress: ExportProgress) => void
+): Promise<RenderedAnimation> {
+  const visible = frames.filter((frame) => frame.visible);
+  if (visible.length === 0) throw new Error("Add at least one frame before exporting.");
+
+  const { width, height } = sequenceCanvasSize(visible, doc.padding, doc.exportScale);
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  if (!context) throw new Error("Could not create canvas renderer.");
+
+  const centerX = width / 2;
+  const centerY = height / 2;
+  const renderedFrames: RenderedAnimationFrame[] = [];
+  const delayMs = Math.max(10, Math.round(1000 / doc.fps));
+
+  for (let index = 0; index < visible.length; index += 1) {
+    const frame = visible[index];
+    context.clearRect(0, 0, width, height);
+    drawContained(context, frame.image, doc.exportScale * frame.scale, centerX, centerY, 1);
+    renderedFrames.push({
+      data: copyRgba(context.getImageData(0, 0, width, height).data),
+      delayMs
+    });
+    onProgress?.({
+      phase: "rendering",
+      completed: index + 1,
+      total: visible.length,
+      percent: Math.round(((index + 1) / visible.length) * 82)
+    });
+    if (index % 4 === 0) await nextFrame();
+  }
+
+  return { width, height, frames: renderedFrames };
+}
+
+export async function exportCompositeAnimation(
+  layers: CompositeLayer[],
+  doc: CompositeDoc,
+  format: ExportFormat,
+  baseName: string,
+  onProgress?: (progress: ExportProgress) => void
+) {
+  const rendered = await renderCompositeAnimation(layers, doc, onProgress);
+  return encodeRenderedAnimation(rendered, doc, format, baseName, onProgress);
+}
+
+export async function exportSequenceAnimation(
+  frames: SequenceFrame[],
+  doc: CompositeDoc,
+  format: ExportFormat,
+  baseName: string,
+  onProgress?: (progress: ExportProgress) => void
+) {
+  const rendered =
+    format === "rotate-package"
+      ? await renderSequenceStillFrames(frames, doc, onProgress)
+      : await renderSequenceAnimation(frames, doc, onProgress);
+  return encodeRenderedAnimation(rendered, doc, format, baseName, onProgress);
+}
+
+async function encodeRenderedAnimation(
+  rendered: RenderedAnimation,
+  doc: CompositeDoc,
+  format: ExportFormat,
+  baseName: string,
+  onProgress?: (progress: ExportProgress) => void
+) {
+  onProgress?.({
+    phase: "encoding",
+    completed: rendered.frames.length,
+    total: rendered.frames.length,
+    percent: 92
+  });
+  await nextFrame();
+
+  if (format === "apng") {
+    const colors = optimizationColorCount({ optimizationMode: doc.optimizationMode, colorLimit: doc.colorLimit });
+    const encoded = encodeApng(rendered, colors);
+    if (!hasPngChunk(encoded, "acTL") || !hasPngChunk(encoded, "fcTL")) {
+      throw new Error("The encoder produced a static PNG instead of an animated PNG.");
+    }
+    onProgress?.({ phase: "done", completed: rendered.frames.length, total: rendered.frames.length, percent: 100 });
+    return new Blob([encoded], { type: "image/apng" });
+  }
+
+  if (format === "webp") {
+    return encodeAnimatedWebp(rendered, doc, onProgress);
+  }
+
+  if (format === "gif") {
+    return encodeAnimatedGif(rendered, doc, onProgress);
+  }
+
+  if (format === "rotate-package") {
+    return encode3dvistaRotatePackage(rendered, doc, baseName, onProgress);
+  }
+
+  return encodeWebm(rendered, doc, onProgress);
+}
+
+function encodeApng(rendered: RenderedAnimation, colors: number) {
+  const buffers = rendered.frames.map((frame) => copyBytes(frame.data).buffer);
+  const delays = rendered.frames.map((frame) => frame.delayMs);
+  return UPNG.encode(buffers, rendered.width, rendered.height, colors, delays);
+}
+
+async function encodeAnimatedWebp(
+  rendered: RenderedAnimation,
+  doc: CompositeDoc,
+  onProgress?: (progress: ExportProgress) => void
+) {
+  const config = webpConfigFor(doc);
+  const encoded = await encodeWebpAnimation(
+    rendered.width,
+    rendered.height,
+    true,
+    rendered.frames.map((frame) => ({
+      data: new Uint8Array(frame.data),
+      duration: frame.delayMs,
+      config
+    }))
+  );
+  if (!encoded) throw new Error("Animated WebP encoding failed.");
+  onProgress?.({ phase: "done", completed: rendered.frames.length, total: rendered.frames.length, percent: 100 });
+  return new Blob([copyBytes(encoded)], { type: "image/webp" });
+}
+
+function webpConfigFor(doc: CompositeDoc) {
+  if (doc.optimizationMode === "quality") return { lossless: 1, quality: 100 };
+  if (doc.optimizationMode === "small") return { lossless: 0, quality: 78 };
+  if (doc.optimizationMode === "tiny") return { lossless: 0, quality: 62 };
+  if (doc.optimizationMode === "custom") {
+    return { lossless: 0, quality: Math.round(55 + (Math.max(2, Math.min(256, doc.colorLimit)) / 256) * 45) };
+  }
+  return { lossless: 0, quality: 90 };
+}
+
+async function encodeAnimatedGif(
+  rendered: RenderedAnimation,
+  doc: CompositeDoc,
+  onProgress?: (progress: ExportProgress) => void
+) {
+  const gif = GIFEncoder();
+  const colors = optimizationColorCount({ optimizationMode: doc.optimizationMode, colorLimit: doc.colorLimit }) || 256;
+  const maxColors = Math.max(2, Math.min(256, colors));
+
+  for (let index = 0; index < rendered.frames.length; index += 1) {
+    const frame = rendered.frames[index];
+    const palette = quantize(frame.data, maxColors, {
+      format: "rgba4444",
+      oneBitAlpha: 128
+    });
+    const indexed = applyPalette(frame.data, palette, "rgba4444");
+    const transparentIndex = palette.findIndex((color) => (color[3] ?? 255) < 128);
+    const hasTransparency = transparentIndex >= 0;
+    gif.writeFrame(indexed, rendered.width, rendered.height, {
+      palette,
+      delay: frame.delayMs,
+      repeat: index === 0 ? 0 : undefined,
+      transparent: hasTransparency,
+      transparentIndex: hasTransparency ? transparentIndex : 0,
+      dispose: hasTransparency ? 2 : -1
+    });
+    onProgress?.({
+      phase: "encoding",
+      completed: index + 1,
+      total: rendered.frames.length,
+      percent: 82 + Math.round(((index + 1) / rendered.frames.length) * 16)
+    });
+    if (index % 4 === 0) await nextFrame();
+  }
+
+  gif.finish();
+  onProgress?.({ phase: "done", completed: rendered.frames.length, total: rendered.frames.length, percent: 100 });
+  return new Blob([copyBytes(gif.bytes())], { type: "image/gif" });
+}
+
+async function encode3dvistaRotatePackage(
+  rendered: RenderedAnimation,
+  doc: CompositeDoc,
+  baseName: string,
+  onProgress?: (progress: ExportProgress) => void
+) {
+  const zip = new JSZip();
+  const folderName = safePackageFolderName(baseName);
+  const root = `rotate-viewers/${folderName}`;
+  const canvas = document.createElement("canvas");
+  canvas.width = rendered.width;
+  canvas.height = rendered.height;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("Could not create 3DVista rotate package renderer.");
+
+  const frameMime = (await canEncodeCanvasType("image/webp")) ? "image/webp" : "image/png";
+  const frameExtension = frameMime === "image/webp" ? "webp" : "png";
+  const frameQuality = frameMime === "image/webp" ? webpFrameQualityFor(doc) : undefined;
+  const digits = Math.max(3, String(rendered.frames.length).length);
+  const framePaths: string[] = [];
+
+  for (let index = 0; index < rendered.frames.length; index += 1) {
+    const frame = rendered.frames[index];
+    const frameName = `frame-${String(index + 1).padStart(digits, "0")}.${frameExtension}`;
+    context.putImageData(new ImageData(frame.data, rendered.width, rendered.height), 0, 0);
+    const blob = await canvasToBlob(canvas, frameMime, frameQuality);
+    zip.file(`${root}/frames/${frameName}`, blob);
+    framePaths.push(`frames/${frameName}`);
+    onProgress?.({
+      phase: "encoding",
+      completed: index + 1,
+      total: rendered.frames.length,
+      percent: 82 + Math.round(((index + 1) / rendered.frames.length) * 14)
+    });
+    if (index % 4 === 0) await nextFrame();
+  }
+
+  const config = {
+    name: folderName,
+    width: rendered.width,
+    height: rendered.height,
+    frameCount: rendered.frames.length,
+    frameType: frameMime,
+    dragPixelsPerFrame: 8,
+    minZoom: 1,
+    maxZoom: 4,
+    zoomStep: 0.12,
+    wrap: true,
+    preload: true,
+    frames: framePaths
+  };
+
+  zip.file(`${root}/index.html`, rotateViewerHtml(folderName));
+  zip.file(`${root}/rotate-viewer.css`, rotateViewerCss());
+  zip.file(`${root}/rotate-viewer.js`, rotateViewerJs());
+  zip.file(`${root}/config.json`, JSON.stringify(config, null, 2));
+  zip.file(`${root}/README-3DVista.txt`, rotateViewerReadme(folderName));
+
+  const zipBlob = await zip.generateAsync({ type: "blob", compression: "DEFLATE" });
+  onProgress?.({ phase: "done", completed: rendered.frames.length, total: rendered.frames.length, percent: 100 });
+  return zipBlob;
+}
+
+async function encodeWebm(
+  rendered: RenderedAnimation,
+  doc: CompositeDoc,
+  onProgress?: (progress: ExportProgress) => void
+) {
+  if (typeof MediaRecorder === "undefined") {
+    throw new Error("This browser does not support WebM recording from canvas.");
+  }
+  const mimeType = pickWebmMimeType();
+  if (!mimeType) {
+    throw new Error("This browser does not offer a WebM encoder through MediaRecorder.");
+  }
+
+  const canvas = document.createElement("canvas");
+  canvas.width = rendered.width;
+  canvas.height = rendered.height;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("Could not create WebM renderer.");
+  const stream = canvas.captureStream(Math.max(1, Math.min(60, doc.fps)));
+  const chunks: Blob[] = [];
+  const recorder = new MediaRecorder(stream, { mimeType });
+  const track = stream.getVideoTracks()[0] as MediaStreamTrack & { requestFrame?: () => void };
+  const done = new Promise<void>((resolve, reject) => {
+    recorder.ondataavailable = (event) => {
+      if (event.data.size > 0) chunks.push(event.data);
+    };
+    recorder.onerror = () => reject(new Error("WebM recording failed."));
+    recorder.onstop = () => resolve();
+  });
+
+  recorder.start();
+  for (let index = 0; index < rendered.frames.length; index += 1) {
+    const frame = rendered.frames[index];
+    context.putImageData(new ImageData(frame.data, rendered.width, rendered.height), 0, 0);
+    track.requestFrame?.();
+    onProgress?.({
+      phase: "encoding",
+      completed: index + 1,
+      total: rendered.frames.length,
+      percent: 82 + Math.round(((index + 1) / rendered.frames.length) * 16)
+    });
+    await sleep(frame.delayMs);
+  }
+
+  recorder.stop();
+  await done;
+  stream.getTracks().forEach((streamTrack) => streamTrack.stop());
+  if (chunks.length === 0) throw new Error("The browser did not produce WebM data.");
+  onProgress?.({ phase: "done", completed: rendered.frames.length, total: rendered.frames.length, percent: 100 });
+  return new Blob(chunks, { type: mimeType });
+}
+
+function pickWebmMimeType() {
+  const candidates = ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"];
+  return candidates.find((candidate) => MediaRecorder.isTypeSupported(candidate)) ?? "";
+}
+
+function safePackageFolderName(name: string) {
+  return (
+    name
+      .toLowerCase()
+      .replace(/[^a-z0-9._-]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 80) || "hotspot-rotate"
+  );
+}
+
+function webpFrameQualityFor(doc: CompositeDoc) {
+  if (doc.optimizationMode === "quality") return 0.96;
+  if (doc.optimizationMode === "small") return 0.78;
+  if (doc.optimizationMode === "tiny") return 0.64;
+  if (doc.optimizationMode === "custom") {
+    return Math.max(0.55, Math.min(0.96, 0.55 + (Math.max(2, Math.min(256, doc.colorLimit)) / 256) * 0.41));
+  }
+  return 0.88;
+}
+
+async function canEncodeCanvasType(type: string) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 1;
+  canvas.height = 1;
+  try {
+    const blob = await canvasToBlob(canvas, type);
+    return blob.type === type;
+  } catch {
+    return false;
+  }
+}
+
+function canvasToBlob(canvas: HTMLCanvasElement, type: string, quality?: number) {
+  return new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        if (blob) resolve(blob);
+        else reject(new Error(`Could not encode ${type} frame.`));
+      },
+      type,
+      quality
+    );
+  });
+}
+
+function rotateViewerHtml(title: string) {
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${escapeHtml(title)} drag rotate</title>
+    <link rel="stylesheet" href="rotate-viewer.css" />
+  </head>
+  <body>
+    <main class="rotate-viewer" data-config="config.json">
+      <div class="stage" role="application" aria-label="Drag to rotate">
+        <img class="frame" alt="" draggable="false" />
+        <div class="loading" aria-live="polite">Loading</div>
+      </div>
+    </main>
+    <script src="rotate-viewer.js"></script>
+  </body>
+</html>
+`;
+}
+
+function rotateViewerCss() {
+  return `html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  background: transparent;
+  overflow: hidden;
+  touch-action: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.rotate-viewer {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  user-select: none;
+}
+
+.stage {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+  outline: none;
+  touch-action: none;
+}
+
+.stage:active {
+  cursor: grabbing;
+}
+
+.frame {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+  transform: translate(var(--pan-x, 0px), var(--pan-y, 0px)) scale(var(--zoom, 1));
+  transform-origin: center center;
+  will-change: transform;
+}
+
+.loading {
+  position: absolute;
+  inset: auto 12px 12px auto;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: rgba(16, 24, 32, 0.72);
+  color: #fff;
+  font: 12px/1.2 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.is-ready .loading {
+  display: none;
+}
+`;
+}
+
+function rotateViewerJs() {
+  return `"use strict";
+
+(async function () {
+  const root = document.querySelector(".rotate-viewer");
+  const stage = document.querySelector(".stage");
+  const image = document.querySelector(".frame");
+  if (!root || !stage || !image) return;
+
+  const configPath = root.getAttribute("data-config") || "config.json";
+  const config = await fetch(configPath).then((response) => {
+    if (!response.ok) throw new Error("Could not load rotate viewer config.");
+    return response.json();
+  });
+
+  const frames = Array.isArray(config.frames) ? config.frames : [];
+  if (frames.length === 0) throw new Error("Rotate viewer has no frames.");
+
+  let index = 0;
+  let dragging = false;
+  let lastX = 0;
+  let lastY = 0;
+  let accumulator = 0;
+  let zoom = 1;
+  let panX = 0;
+  let panY = 0;
+  const dragPixelsPerFrame = Math.max(1, Number(config.dragPixelsPerFrame) || 8);
+  const minZoom = Math.max(0.25, Number(config.minZoom) || 1);
+  const maxZoom = Math.max(minZoom, Number(config.maxZoom) || 4);
+  const zoomStep = Math.max(0.02, Number(config.zoomStep) || 0.12);
+  const wrap = config.wrap !== false;
+
+  function normalize(nextIndex) {
+    if (wrap) return ((nextIndex % frames.length) + frames.length) % frames.length;
+    return Math.max(0, Math.min(frames.length - 1, nextIndex));
+  }
+
+  function show(nextIndex) {
+    index = normalize(nextIndex);
+    image.src = frames[index];
+  }
+
+  function step(amount) {
+    if (amount !== 0) show(index + amount);
+  }
+
+  function applyTransform() {
+    if (zoom <= minZoom + 0.001) {
+      zoom = minZoom;
+      panX = 0;
+      panY = 0;
+    }
+    image.style.setProperty("--zoom", String(zoom));
+    image.style.setProperty("--pan-x", panX + "px");
+    image.style.setProperty("--pan-y", panY + "px");
+  }
+
+  function changeZoom(direction) {
+    const factor = 1 + zoomStep * direction;
+    zoom = Math.max(minZoom, Math.min(maxZoom, zoom * factor));
+    applyTransform();
+  }
+
+  function preload() {
+    if (config.preload === false) return;
+    frames.forEach((src) => {
+      const preloaded = new Image();
+      preloaded.src = src;
+    });
+  }
+
+  stage.tabIndex = 0;
+  stage.addEventListener("pointerdown", (event) => {
+    dragging = true;
+    lastX = event.clientX;
+    lastY = event.clientY;
+    accumulator = 0;
+    stage.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  });
+
+  stage.addEventListener("pointermove", (event) => {
+    if (!dragging) return;
+    if (zoom > minZoom + 0.001) {
+      panX += event.clientX - lastX;
+      panY += event.clientY - lastY;
+      lastX = event.clientX;
+      lastY = event.clientY;
+      applyTransform();
+      event.preventDefault();
+      return;
+    }
+    accumulator += lastX - event.clientX;
+    lastX = event.clientX;
+    lastY = event.clientY;
+    const frameDelta = Math.trunc(accumulator / dragPixelsPerFrame);
+    if (frameDelta !== 0) {
+      step(frameDelta);
+      accumulator -= frameDelta * dragPixelsPerFrame;
+    }
+    event.preventDefault();
+  });
+
+  function endDrag(event) {
+    dragging = false;
+    try {
+      stage.releasePointerCapture(event.pointerId);
+    } catch {
+      /* pointer may already be released */
+    }
+  }
+
+  stage.addEventListener("pointerup", endDrag);
+  stage.addEventListener("pointercancel", endDrag);
+  stage.addEventListener("wheel", (event) => {
+    changeZoom(event.deltaY < 0 ? 1 : -1);
+    event.preventDefault();
+  }, { passive: false });
+
+  stage.addEventListener("keydown", (event) => {
+    if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+      step(1);
+      event.preventDefault();
+    }
+    if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+      step(-1);
+      event.preventDefault();
+    }
+  });
+
+  image.addEventListener("load", () => {
+    root.classList.add("is-ready");
+  }, { once: true });
+
+  show(0);
+  applyTransform();
+  preload();
+})().catch((error) => {
+  const loading = document.querySelector(".loading");
+  if (loading) loading.textContent = error && error.message ? error.message : "Viewer failed";
+});
+`;
+}
+
+function rotateViewerReadme(folderName: string) {
+  return `3DVista Drag Rotate Package
+
+Controls:
+- Drag left/right to rotate.
+- Use the mouse wheel to zoom in/out.
+- Drag while zoomed in to pan.
+- Use arrow keys to step through frames.
+
+HOW TO INSTALL IT INTO A PUBLISHED 3DVISTA TOUR
+
+1. Publish your 3DVista tour to a folder.
+2. Copy the "rotate-viewers" folder from this ZIP into the tour's "media" folder.
+3. In 3DVista, call this viewer with a relative path such as:
+
+   media/rotate-viewers/${folderName}/index.html
+
+HOW TO PREVIEW LOCALLY
+
+1. Open the published tour folder in Windows File Explorer.
+2. Click the address bar at the top of File Explorer.
+3. Type:
+
+   powershell
+
+4. Press Enter. PowerShell will open directly in that folder.
+5. Start the local server:
+
+   python -m http.server 8080
+
+6. Open the full tour in your browser:
+
+   http://localhost:8080/index.htm
+`;
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function copyRgba(data: Uint8ClampedArray): Uint8ClampedArray<ArrayBuffer> {
+  const copy = new Uint8ClampedArray(data.length);
+  copy.set(data);
+  return copy;
+}
+
+function copyBytes(data: Uint8Array | Uint8ClampedArray): Uint8Array<ArrayBuffer> {
+  const copy = new Uint8Array(data.length);
+  copy.set(data);
+  return copy;
 }
 
 export function optimizationColorCount(settings: Pick<AnimationSettings, "optimizationMode" | "colorLimit">) {
@@ -849,6 +1520,10 @@ export function optimizationLabel(settings: AnimationSettings) {
 
 function nextFrame() {
   return new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+}
+
+function sleep(ms: number) {
+  return new Promise<void>((resolve) => window.setTimeout(resolve, ms));
 }
 
 function hasPngChunk(buffer: ArrayBuffer, chunkName: string) {
